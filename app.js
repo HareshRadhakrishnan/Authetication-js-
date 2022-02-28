@@ -4,7 +4,8 @@ const express =require("express");
 const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
-const md5 = require("md5");
+const bcrypt = require("bcrypt");
+const saltRounds =10;
 
 app = express();
 app.set("view engine","ejs");
@@ -37,29 +38,36 @@ app.post("/login",function(req,res){
       console.log(err);
     }else{
       if(result){
-        if(result.password === md5(req.body.password)){
-          res.render("secrets")
-        }
-        else {
-          res.send("wrong password")
-        }
+        bcrypt.compare(req.body.password,result.password,function(err,response){
+          if(response==true){
+            res.render("secrets")
+          }
+          else {
+            res.send("wrong password")
+          }
+        })
+
       }
     }
   })
   console.log('');
 })
 app.post("/register",function(req,res){
-  const newUser = User({
-    username:req.body.username,
-    password:md5(req.body.password)
+  bcrypt.hash(req.body.password,saltRounds,function(err,hash){
+    const newUser = User({
+      username:req.body.username,
+      password:hash
+    })
+    newUser.save(function(err){
+      if(err){
+        console.log(err);
+      }else{
+        res.render("secrets")
+      }
+    })
   })
-  newUser.save(function(err){
-    if(err){
-      console.log(err);
-    }else{
-      res.render("secrets")
-    }
-  })
+
+
 
 })
 
