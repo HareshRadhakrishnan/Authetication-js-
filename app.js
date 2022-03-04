@@ -30,7 +30,8 @@ mongoose.connect("mongodb://localhost:27017/userDB")
 const userSchema = new mongoose.Schema( {
   username:String,
   password:String,
-  googleId:String
+  googleId:String,
+  secrets:String
 })
 userSchema.plugin(pasportLocalMongoose)
 userSchema.plugin(findOrCreate)
@@ -39,13 +40,15 @@ const User = mongoose.model("user",userSchema);
 
 passport.use(User.createStrategy());
 
-
 passport.serializeUser(function(user, done) {
-  done(null, user);
+  done(null, user.id);
 });
 
-passport.deserializeUser(function(user, done) {
-  done(null, user);
+passport.deserializeUser(function(id, done) {
+  User.findById(id,function(err,user){
+      done(err, user);
+  })
+
 });
 
 passport.use(new GoogleStrategy({
@@ -55,7 +58,6 @@ passport.use(new GoogleStrategy({
     passReqToCallback   : true
   },
   function(request, accessToken, refreshToken, profile, done) {
-    console.log(profile);
     User.findOrCreate({ googleId: profile.id }, function (err, user) {
       return done(err, user);
     });
@@ -68,8 +70,7 @@ passport.use(new FacebookStrategy({
     callbackURL: "http://localhost:3000/auth/facebook/secrets"
   },
   function(accessToken, refreshToken, profile, cb) {
-    console.log(profile);
-    User.findOrCreate({ facebookId: profile.id }, function (err, user) {
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
       return cb(err, user);
     });
   }
@@ -97,6 +98,31 @@ app.get('/auth/facebook/secrets',
     // Successful authentication
     res.redirect('/secrets');
   });
+
+  app.get("/submit",function(req,res){
+    if(req.isAuthenticated()){
+      res.render("submit")
+    }else{
+      res.redirect("/login");
+    }
+  })
+  app.post("/submit",function(req,res){
+    const submittedSecret = req.body.secret;
+    User.findById(req.user.id,function(err,result){
+      if(err){
+        console.log(err);
+      }else{
+        if(result){
+          result.secrets = submittedSecret;
+          result.save(function(){
+            res.redirect("/secrets")
+          })
+
+        }
+      }
+    })
+  })
+
 app.get("/login",function(req,res){
   res.render("login")
 })
@@ -106,15 +132,21 @@ app.get("/register",function(req,res){
 app.get("/logout",function(req,res){
   req.logout()
   res.redirect("/")
-
 })
 app.get("/secrets",function(req,res){
   if(req.isAuthenticated()){
-    res.render("secrets");
+    User.find({"secrets":{$ne:null}},function(err,users){
+      if(err){
+        console.log(err);
+      }else{
+        res.render("secrets",{usersWithSecret:users});
+      }
+    })
   }else{
     res.redirect("/login")
   }
 })
+
 
 app.post("/login",function(req,res){
   const user = new User({
